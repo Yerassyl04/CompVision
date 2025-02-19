@@ -1,0 +1,55 @@
+import torch
+import torchvision
+from torchvision import transforms
+import numpy as np
+
+model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+model.eval()
+
+eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+
+transform = transforms.Compose([transforms.ToTensor()])
+
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("Error: Could not open webcam")
+    exit()
+
+cv2.namedWindow("Faster R-CNN Face & Eye Detection", cv2.WINDOW_NORMAL)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("Error: Can't receive frame")
+        break
+
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    img_tensor = transform(frame_rgb).unsqueeze(0)
+
+    with torch.no_grad():
+        predictions = model(img_tensor)
+
+    for i, box in enumerate(predictions[0]['boxes']):
+        score = predictions[0]['scores'][i].item()
+        if score > 0.8:  # Confidence threshold
+            x1, y1, x2, y2 = box.int().tolist()
+
+            # Draw face bounding box
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(frame, f"Face {score:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            # Detect eyes within the face region
+            face_roi = frame[y1:y2, x1:x2]
+            gray_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+            eyes = eye_cascade.detectMultiScale(gray_face, scaleFactor=1.1, minNeighbors=5, minSize=(20, 20))
+
+            for (ex, ey, ew, eh) in eyes:
+                cv2.rectangle(face_roi, (ex, ey), (ex + ew, ey + eh), (255, 0, 0), 2)  # Blue for eyes
+
+    cv2.imshow("Faster R-CNN Face & Eye Detection", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()

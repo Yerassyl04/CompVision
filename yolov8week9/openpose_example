@@ -1,0 +1,90 @@
+import cv2
+import numpy as np
+import os
+
+# === 1. Set OpenPose Paths (Update This) ===
+OPENPOSE_PATH = r"C:/Users/asus/Downloads/openpose-1.7.0-binaries-win64-cpu-python3.7-flir-3d/openpose" # 🔹 Change this to your OpenPose directory
+MODEL_FOLDER = os.path.join(OPENPOSE_PATH, "models")
+
+
+if os.name == "nt":
+    os.add_dll_directory(os.path.join(OPENPOSE_PATH, "bin"))
+
+
+protoFile = r"C:\Users\asus\Downloads\openpose-1.7.0-binaries-win64-cpu-python3.7-flir-3d\openpose\models\pose\coco\pose_deploy_linevec.prototxt"
+weightsFile = r"C:\Users\asus\Downloads\openpose-1.7.0-binaries-win64-cpu-python3.7-flir-3d\openpose\models\pose\coco\pose_iter_440000.caffemodel"
+net = cv2.dnn.readNetFromCaffe(protoFile, weightsFile)
+
+
+def detect_pose(image_path):
+    image = cv2.imread(image_path)
+    height, width, _ = image.shape
+    inputBlob = cv2.dnn.blobFromImage(image, 1.0 / 255, (368, 368), (0, 0, 0), swapRB=False, crop=False)
+
+    net.setInput(inputBlob)
+    output = net.forward()
+
+    # Keypoint Connections (COCO Model)
+    POSE_PAIRS = [[1, 2], [1, 5], [2, 3], [3, 4], [5, 6], [6, 7], [1, 8],
+                  [8, 9], [9, 10], [1, 11], [11, 12], [12, 13], [1, 0], [0, 14],
+                  [14, 16], [0, 15], [15, 17], [2, 16], [5, 17]]
+
+    # Extract keypoints
+    points = []
+    for i in range(18):  # 18 Keypoints in COCO Model
+        heatmap = output[0, i, :, :]
+        _, confidence, _, point = cv2.minMaxLoc(heatmap)
+        x, y = (width * point[0] // output.shape[3], height * point[1] // output.shape[2])
+        points.append((x, y) if confidence > 0.1 else None)
+
+    # Draw keypoints
+    for point in points:
+        if point:
+            cv2.circle(image, point, 5, (0, 255, 0), thickness=-1, lineType=cv2.FILLED)
+
+    # Draw skeleton connections
+    for pair in POSE_PAIRS:
+        partA, partB = pair
+        if points[partA] and points[partB]:
+            cv2.line(image, points[partA], points[partB], (255, 0, 0), 2)
+
+    cv2.imshow("Pose Detection", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+detect_pose("photo_5372913107460027003_y.jpg")
+
+
+def real_time_pose():
+    cap = cv2.VideoCapture(0)
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        height, width, _ = frame.shape
+        inputBlob = cv2.dnn.blobFromImage(frame, 1.0 / 255, (368, 368), (0, 0, 0), swapRB=False, crop=False)
+        net.setInput(inputBlob)
+        output = net.forward()
+
+        points = []
+        for i in range(18):
+            heatmap = output[0, i, :, :]
+            _, confidence, _, point = cv2.minMaxLoc(heatmap)
+            x, y = (width * point[0] // output.shape[3], height * point[1] // output.shape[2])
+            points.append((x, y) if confidence > 0.1 else None)
+
+        for point in points:
+            if point:
+                cv2.circle(frame, point, 5, (0, 255, 0), thickness=-1, lineType=cv2.FILLED)
+
+        cv2.imshow("Real-Time Pose Tracking", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+real_time_pose()

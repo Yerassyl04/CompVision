@@ -1,0 +1,73 @@
+import cv2
+import mediapipe as mp
+import numpy as np
+
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
+
+shrek_mask = cv2.imread("shrek-the-third-poster-1181768.png", cv2.IMREAD_UNCHANGED)
+
+WIDTH_SCALE = 1.9
+HEIGHT_SCALE = 1.9
+
+
+def overlay_shrek(frame, landmarks):
+    h, w, _ = frame.shape
+
+    left_cheek = landmarks[234]
+    right_cheek = landmarks[454]
+    chin = landmarks[152]
+    forehead = landmarks[10]
+
+    x1, y1 = int(left_cheek.x * w), int(left_cheek.y * h)
+    x2, y2 = int(right_cheek.x * w), int(right_cheek.y * h)
+    x3, y3 = int(chin.x * w), int(chin.y * h)
+    x4, y4 = int(forehead.x * w), int(forehead.y * h)
+
+    mask_width = int((x2 - x1) * WIDTH_SCALE)
+    mask_height = int((y3 - y4) * HEIGHT_SCALE)
+
+    resized_mask = cv2.resize(shrek_mask, (mask_width, mask_height))
+
+    alpha_mask = resized_mask[:, :, 3] / 255.0
+    alpha_frame = 1.0 - alpha_mask
+
+    x_offset = x1 - int((mask_width - (x2 - x1)) / 2)
+    y_offset = y4 - int(mask_height * 0.3)
+
+    y1, y2 = max(0, y_offset), min(h, y_offset + mask_height)
+    x1, x2 = max(0, x_offset), min(w, x_offset + mask_width)
+
+    mask_y1, mask_y2 = 0, y2 - y1
+    mask_x1, mask_x2 = 0, x2 - x1
+
+    # Overlay mask on frame
+    for c in range(3):  # BGR channels
+        frame[y1:y2, x1:x2, c] = (
+                alpha_mask[mask_y1:mask_y2, mask_x1:mask_x2] * resized_mask[mask_y1:mask_y2, mask_x1:mask_x2, c]
+                + alpha_frame[mask_y1:mask_y2, mask_x1:mask_x2] * frame[y1:y2, x1:x2, c]
+        )
+
+    return frame
+
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = face_mesh.process(rgb_frame)
+
+    if results.multi_face_landmarks:
+        for face_landmarks in results.multi_face_landmarks:
+            frame = overlay_shrek(frame, face_landmarks.landmark)
+
+    cv2.imshow("Shrek Face Filter", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()

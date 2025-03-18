@@ -1,0 +1,48 @@
+import cv2
+import mediapipe as mp
+import numpy as np
+
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
+
+LIPS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 78, 191]
+CHEEKS = [(50, 280), (210, 430)]  # Pairs of cheek points (left, right)
+
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = face_mesh.process(rgb_frame)
+
+    if results.multi_face_landmarks:
+        landmarks = results.multi_face_landmarks[0].landmark
+        h, w, _ = frame.shape
+
+        # Convert normalized landmarks to pixel coordinates
+        def get_landmark_coords(points):
+            return [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in points]
+
+        lips_pts = get_landmark_coords(LIPS)
+        cheek_centers = [(  # Compute the center point between two landmarks for cheeks
+            (int((landmarks[p1].x + landmarks[p2].x) / 2 * w)),
+            (int((landmarks[p1].y + landmarks[p2].y) / 2 * h))
+        ) for p1, p2 in CHEEKS]
+
+        lips_mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(lips_mask, [np.array(lips_pts, dtype=np.int32)], 255)
+        frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        frame_hsv[:, :, 1] = np.where(lips_mask > 0, frame_hsv[:, :, 1] + 50, frame_hsv[:, :, 1])  # Increase saturation
+        frame = cv2.cvtColor(frame_hsv, cv2.COLOR_HSV2BGR)
+
+
+    cv2.imshow("Beauty Filter", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()

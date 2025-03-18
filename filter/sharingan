@@ -1,0 +1,52 @@
+import cv2
+import numpy as np
+
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
+sharingan = cv2.imread("sharingan-sasuke-png-0.png", cv2.IMREAD_UNCHANGED)
+scaling_factor = 0.4
+
+def overlay_sharingan(frame, eye_coords):
+    for (ex, ey, ew, eh) in eye_coords:
+        # Reduce Sharingan size
+        new_width = int(ew * scaling_factor)
+        new_height = int(eh * scaling_factor)
+
+        resized_sharingan = cv2.resize(sharingan, (new_width, new_height))
+
+        alpha_s = resized_sharingan[:, :, 3] / 255.0
+        alpha_l = 1.0 - alpha_s
+
+        x_offset = ex + (ew - new_width) // 2
+        y_offset = ey + (eh - new_height) // 2
+
+        for c in range(3):  # Iterate over B, G, R channels
+            frame[y_offset:y_offset + new_height, x_offset:x_offset + new_width, c] = (
+                    alpha_s * resized_sharingan[:, :, c] + alpha_l * frame[y_offset:y_offset + new_height,
+                                                                     x_offset:x_offset + new_width, c]
+            )
+
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+    for (x, y, w, h) in faces:
+        eyes = eye_cascade.detectMultiScale(gray[y:y + h, x:x + w])
+
+        adjusted_eyes = [(x + ex, y + ey, ew, eh) for (ex, ey, ew, eh) in eyes]
+
+        if len(adjusted_eyes) == 2:
+            overlay_sharingan(frame, adjusted_eyes)
+    cv2.imshow("Sasuke Sharingan Filter", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
